@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <title>Prompt Lens — история</title>
+  <link rel="stylesheet" href="page.css">
+  <link rel="stylesheet" href="history.css">
+</head>
+<body>
+  <div class="wrap">
+    <div class="top">
+      <h1>ИСТОРИЯ</h1>
+      <span class="sub" id="count">—</span>
+      <span class="grow"></span>
+      <button class="btn" id="export-json" type="button">Экспорт JSON</button>
+      <button class="btn" id="export-md" type="button">Markdown избранного</button>
+      <button class="btn" id="options" type="button">Настройки</button>
+      <button class="btn btn--warn" id="clear" type="button">Очистить всё</button>
+    </div>
+
+    <div class="bar">
+      <div class="field--grow">
+        <label class="k" for="q">Поиск по промпту и тегам</label>
+        <input type="search" id="q" placeholder="студийный свет, 85mm, тёплый…" autocomplete="off">
+      </div>
+      <div>
+        <label class="k" for="target">Генератор</label>
+        <select id="target">
+          <option value="">любой</option>
+          <option value="nano-banana">Nano Banana</option>
+          <option value="gpt-image-2">GPT Image 2</option>
+          <option value="universal">Universal</option>
+        </select>
+      </div>
+      <div>
+        <label class="k" for="from">С даты</label>
+        <input type="date" id="from">
+      </div>
+      <div>
+        <label class="k" for="to">По дату</label>
+        <input type="date" id="to">
+      </div>
+      <div>
+        <label class="k">Отбор</label>
+        <button class="btn" id="starred" type="button" aria-pressed="false">Только избранное</button>
+      </div>
+      <div>
+        <label class="k">Две отмеченных</label>
+        <button class="btn btn--primary" id="compare" type="button" disabled>Сравнить</button>
+      </div>
+    </div>
+
+    <div id="compare-out" class="card" hidden></div>
+
+    <div id="grid" class="grid"></div>
+    <p id="empty" class="note" hidden>Пусто. Наведи курсор на картинку в вебе и нажми пилюлю <b>prompt</b>.</p>
+  </div>
+
+  <div id="toast" class="toast" hidden></div>
+
+  <script type="module" src="history.js"></script>
+</body>
+</html>

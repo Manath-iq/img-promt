@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <title>Prompt Lens — стенд</title>
+  <script src="stub.js"></script>
+  <style>
+    body { margin: 0; background: #F3F1EC; color: #1A1A1A; font: 14px/1.6 ui-sans-serif, system-ui, sans-serif; }
+    .head { padding: 20px 24px; display: flex; gap: 12px; align-items: baseline; }
+    .head b { font-size: 16px; }
+    .head a { color: #1A1A1A; }
+    .shelf { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; padding: 0 24px 60px; }
+    .shelf img { width: 100%; display: block; border-radius: 8px; }
+    .hint { padding: 0 24px 16px; color: #6A6A66; }
+  </style>
+</head>
+<body>
+  <div class="head">
+    <b>Prompt Lens — стенд</b>
+    <span>· <a href="?view=card">карточка</a> · <a href="?view=history">история</a> ·</span>
+    <span>chrome.* подменён, сеть не трогается</span>
+  </div>
+  <p class="hint">Наведи курсор на картинку — появится пилюля. Alt+P — по курсору, Alt+рамка — фрагмент.</p>
+  <div class="shelf" id="shelf"></div>
+
+  <script type="module">
+    const view = new URLSearchParams(location.search).get('view') || 'card';
+
+    if (view === 'history') {
+      // Тянем разметку из настоящей history.html, чтобы стенд не расходился с ней.
+      const html = await (await fetch('../history.html')).text();
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      for (const link of doc.querySelectorAll('link[rel="stylesheet"]')) {
+        const l = document.createElement('link');
+        l.rel = 'stylesheet';
+        l.href = '../' + link.getAttribute('href');
+        document.head.appendChild(l);
+      }
+      document.body.innerHTML = doc.body.innerHTML;
+      document.body.style.background = '#0C0C0E';
+      await import('../history.js?v=' + Date.now());
+    } else {
+      const shelf = document.getElementById('shelf');
+      const swatch = (h, w, hh) => `data:image/svg+xml;utf8,${encodeURIComponent(
+        `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${hh}">
+           <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+             <stop offset="0" stop-color="hsl(${h} 30% 62%)"/><stop offset="1" stop-color="hsl(${h + 40} 26% 30%)"/>
+           </linearGradient></defs>
+           <rect width="100%" height="100%" fill="url(#g)"/>
+           <circle cx="${w / 2}" cy="${hh / 2}" r="${Math.min(w, hh) / 5}" fill="rgba(255,255,255,.25)"/>
+         </svg>`)}`;
+      for (const [i, size] of [[420, 560], [420, 300], [420, 420]].entries()) {
+        const img = document.createElement('img');
+        img.src = swatch(20 + i * 60, size[0], size[1]);
+        img.width = size[0];
+        img.height = size[1];
+        img.alt = 'демо-референс';
+        shelf.appendChild(img);
+      }
+      await import('../content.js?v=' + Date.now()); // стенд всегда берёт свежий файл
+    }
+  </script>
+</body>
+</html>

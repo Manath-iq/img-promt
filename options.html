@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <title>Prompt Lens — настройки</title>
+  <link rel="stylesheet" href="page.css">
+</head>
+<body>
+  <div class="wrap wrap--narrow">
+    <div class="top">
+      <h1>НАСТРОЙКИ</h1>
+      <span class="grow"></span>
+      <button class="btn" id="history" type="button">История</button>
+    </div>
+
+    <div class="card">
+      <label class="k" for="key">Ключ Gemini (AI Studio)</label>
+      <div class="bar" style="margin-bottom:8px">
+        <div class="field--grow">
+          <input type="password" id="key" placeholder="AIza…" autocomplete="off" spellcheck="false">
+        </div>
+        <button class="btn" id="reveal" type="button" aria-pressed="false">Показать</button>
+        <button class="btn" id="check" type="button">Проверить</button>
+      </div>
+      <p class="note" id="key-note">
+        Ключ берётся в <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer">AI Studio</a>
+        и лежит только в этом браузере, в <code>storage.local</code>. В облако Google вместе с настройками
+        профиля он не уезжает.
+      </p>
+    </div>
+
+    <hr>
+
+    <div class="card">
+      <div style="margin-bottom:14px">
+        <label class="k" for="model">Модель</label>
+        <input type="text" id="model" spellcheck="false" placeholder="gemini-3.6-flash">
+        <p class="note" style="margin-top:6px">Любой id, который отдаёт твой ключ. «Проверить» покажет список доступных.</p>
+      </div>
+
+      <div style="margin-bottom:14px">
+        <label class="k" for="target">Целевой генератор по умолчанию</label>
+        <select id="target">
+          <option value="nano-banana">Nano Banana</option>
+          <option value="gpt-image-2">GPT Image 2</option>
+          <option value="universal">Universal</option>
+        </select>
+      </div>
+
+      <div>
+        <label class="k" for="minSize">Минимальный размер картинки, px</label>
+        <input type="number" id="minSize" min="40" max="600" step="10">
+        <p class="note" style="margin-top:6px">Пилюля не появляется на всём, что меньше: иконки и аватарки разбирать незачем.</p>
+      </div>
+    </div>
+
+    <hr>
+
+    <div class="card">
+      <label class="k" for="template">Инструкция анализатора</label>
+      <textarea id="template" rows="18" spellcheck="false"></textarea>
+      <p class="note" style="margin-top:8px">
+        <code>{{TARGET_MODEL}}</code> подставляется в момент запроса. Ответ должен оставаться
+        строгим JSON по схеме — интерфейс раскладывает его по полям.
+      </p>
+      <div class="bar" style="margin:12px 0 0">
+        <button class="btn" id="reset-template" type="button">Вернуть исходную</button>
+      </div>
+    </div>
+
+    <hr>
+
+    <div class="card">
+      <span class="k">Расход</span>
+      <p class="note" id="usage">—</p>
+      <p class="note">Бесплатный тариф Flash — порядка 1500 запросов в сутки. Считаются все обращения
+        к модели: разбор картинки, пересборка промпта, сравнение.</p>
+    </div>
+
+    <div class="bar" style="margin-top:20px">
+      <button class="btn btn--primary" id="save" type="button">Сохранить</button>
+      <span class="note" id="status"></span>
+    </div>
+  </div>
+
+  <script type="module" src="options.js"></script>
+</body>
+</html>
