@@ -9,7 +9,7 @@ import {
 import {
   buildAnalyzerInstruction, buildRebuildInstruction, buildCompareInstruction,
   parseModelJson, normalizeAnalysis, snapAspect, aspectFromAnalysis, ensureFormatLine,
-  TARGETS,
+  lintPrompt, TARGETS,
 } from './lib/prompt.js';
 
 const API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
@@ -19,6 +19,7 @@ const API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
 const MAX_SIDE = 1536;
 const PAYLOAD_TYPE = 'image/webp';
 const PAYLOAD_QUALITY = 0.95;
+const DETAIL_SIDE = 768; // фрагмент один к одному, вторым кадром
 const THUMB_SIDE = 256;  // превью для истории
 
 /** Ошибка с кодом — контент-скрипт по коду выбирает, что показать и что предложить. */
@@ -102,7 +103,13 @@ async function analyze(msg, sender) {
   const target = TARGETS[msg.target] ? msg.target : settings.target;
   const sourceUrl = msg.urls?.[0] || '';
   const cropKey = msg.crop ? `#${round4(msg.crop.x)},${round4(msg.crop.y)},${round4(msg.crop.w)},${round4(msg.crop.h)}` : '';
-  const key = await hashKey(sourceUrl + cropKey);
+
+  // Ключ кэша считается не только по картинке: сменил модель или поправил
+  // инструкцию — прежний разбор больше не ответ на этот вопрос. Иначе после
+  // улучшения шаблона повторный разбор молча отдавал бы старый результат.
+  const key = await hashKey([
+    sourceUrl, cropKey, settings.model, await hashKey(settings.template),
+  ].join('|'));
 
   if (!msg.force) {
     const hit = await cacheGet(key);
@@ -128,23 +135,26 @@ async function analyze(msg, sender) {
   // а генератор без явного формата выдаёт свой дефолт — кадр не сходится.
   const aspect = snapAspect(payload.width, payload.height);
 
-  const instruction = buildAnalyzerInstruction(settings.template, target, aspect);
-  const parts = [
-    { text: instruction },
-    { inline_data: { mime_type: PAYLOAD_TYPE, data: payload.base64 } },
-  ];
+  // Если исходник заметно крупнее того, что уходит в модель, добавляем второй
+  // кадр — центральный фрагмент один к одному. Иначе слой «обработка» модель
+  // разбирает по картинке, в которой фактуру уже усреднило масштабирование.
+  const region = cropRegion(image.bitmap, msg.crop);
+  const detail = Math.max(region.sw, region.sh) > MAX_SIDE * 1.4
+    ? await encodeNative(image.bitmap, DETAIL_SIDE, PAYLOAD_TYPE, PAYLOAD_QUALITY, msg.crop)
+    : null;
+
+  const instruction = buildAnalyzerInstruction(settings.template, target, aspect, !!detail);
+  const images = [{ inline_data: { mime_type: PAYLOAD_TYPE, data: payload.base64 } }];
+  if (detail) images.push({ inline_data: { mime_type: PAYLOAD_TYPE, data: detail.base64 } });
 
   let analysis;
   try {
-    analysis = normalizeAnalysis(parseModelJson(await ask(settings, parts)));
+    analysis = normalizeAnalysis(parseModelJson(await ask(settings, [{ text: instruction }, ...images])));
   } catch (first) {
     // Один автоматический повтор с припиской — модели иногда добавляют пояснение.
     try {
-      const retryParts = [
-        { text: instruction + '\n\nВАЖНО: верни строго JSON по схеме выше. Без markdown, без пояснений, без ```.' },
-        { inline_data: { mime_type: PAYLOAD_TYPE, data: payload.base64 } },
-      ];
-      const raw = await ask(settings, retryParts);
+      const nudge = instruction + '\n\nВАЖНО: верни строго JSON по схеме выше. Без markdown, без пояснений, без ```.';
+      const raw = await ask(settings, [{ text: nudge }, ...images]);
       analysis = normalizeAnalysis(parseModelJson(raw));
     } catch (second) {
       throw new LensError(
@@ -156,6 +166,8 @@ async function analyze(msg, sender) {
   }
 
   // Измеренное сильнее увиденного: перетираем оценку модели и страхуем строку формата.
+  analysis.prompt = lintPrompt(analysis.prompt);
+  analysis.prompt_style_only = lintPrompt(analysis.prompt_style_only);
   if (aspect) {
     analysis.aspect_ratio = aspect.label;
     analysis.orientation = aspect.orientation;
@@ -210,7 +222,8 @@ async function loadImage(msg, sender) {
   // Запасной путь: снимок видимой области и вырезка по месту картинки.
   if (msg.rect && sender?.tab?.windowId != null) {
     try {
-      const shot = await chrome.tabs.captureVisibleTab(sender.tab.windowId, { format: 'png' });
+      const shot = await withHiddenUi(sender.tab.id, () =>
+        chrome.tabs.captureVisibleTab(sender.tab.windowId, { format: 'png' }));
       const full = await createImageBitmap(await (await fetch(shot)).blob());
       const dpr = msg.dpr || 1;
       const x = Math.max(0, Math.round(msg.rect.x * dpr));
@@ -236,18 +249,62 @@ async function loadImage(msg, sender) {
 }
 
 const short = (u) => (u.length > 80 ? u.slice(0, 77) + '…' : u);
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Прячет собственный интерфейс на время снимка вкладки. Пилюля висит прямо
+ * поверх картинки в её левом верхнем углу — без этого она попадала бы в кадр
+ * и уезжала в модель как часть разбираемого изображения.
+ */
+async function withHiddenUi(tabId, fn) {
+  let hidden = false;
+  try {
+    await chrome.tabs.sendMessage(tabId, { type: 'LENS_UI', hidden: true });
+    hidden = true;
+    await sleep(60); // дать кадру перерисоваться
+  } catch {
+    // контент-скрипт не отвечает — снимем как есть, это лучше, чем ничего
+  }
+  try {
+    return await fn();
+  } finally {
+    if (hidden) chrome.tabs.sendMessage(tabId, { type: 'LENS_UI', hidden: false }).catch(() => {});
+  }
+}
+
+/** Область исходника, которую разбираем: либо весь кадр, либо выделенный фрагмент. */
+function cropRegion(bitmap, crop) {
+  if (!crop) return { sx: 0, sy: 0, sw: bitmap.width, sh: bitmap.height };
+  const sx = Math.round(crop.x * bitmap.width);
+  const sy = Math.round(crop.y * bitmap.height);
+  return {
+    sx, sy,
+    sw: Math.min(Math.max(16, Math.round(crop.w * bitmap.width)), bitmap.width - sx),
+    sh: Math.min(Math.max(16, Math.round(crop.h * bitmap.height)), bitmap.height - sy),
+  };
+}
+
+/**
+ * Центральный фрагмент в исходном разрешении, без масштабирования.
+ * Зерно, шум и артефакты сжатия на ужатой картинке не читаются в принципе:
+ * масштабирование их усредняет. Поэтому вторым кадром уходит кусок «один к одному».
+ */
+async function encodeNative(bitmap, side, type, quality, crop) {
+  const { sx, sy, sw, sh } = cropRegion(bitmap, crop);
+  const w = Math.min(side, sw);
+  const h = Math.min(side, sh);
+  const cx = Math.round(sx + (sw - w) / 2);
+  const cy = Math.round(sy + (sh - h) / 2);
+
+  const canvas = new OffscreenCanvas(w, h);
+  canvas.getContext('2d').drawImage(bitmap, cx, cy, w, h, 0, 0, w, h);
+  const blob = await canvas.convertToBlob({ type, quality });
+  return { base64: toBase64(await blob.arrayBuffer()), width: w, height: h };
+}
 
 /** Масштабирование, кроп и кодирование через OffscreenCanvas. */
 async function encode(bitmap, maxSide, type, quality, crop) {
-  let sx = 0, sy = 0, sw = bitmap.width, sh = bitmap.height;
-  if (crop) {
-    sx = Math.round(crop.x * bitmap.width);
-    sy = Math.round(crop.y * bitmap.height);
-    sw = Math.max(16, Math.round(crop.w * bitmap.width));
-    sh = Math.max(16, Math.round(crop.h * bitmap.height));
-    sw = Math.min(sw, bitmap.width - sx);
-    sh = Math.min(sh, bitmap.height - sy);
-  }
+  const { sx, sy, sw, sh } = cropRegion(bitmap, crop);
 
   const scale = Math.min(1, maxSide / Math.max(sw, sh));
   const dw = Math.max(1, Math.round(sw * scale));
@@ -330,8 +387,8 @@ async function buildPrompts(analysis, target, settings, aspect = null) {
   const replicate = String(parsed.prompt || '').trim();
   if (!replicate) throw new LensError('BAD_JSON', 'В ответе нет поля prompt.');
   return {
-    replicate: ensureFormatLine(replicate, known),
-    styleOnly: ensureFormatLine(String(parsed.prompt_style_only || '').trim(), known),
+    replicate: ensureFormatLine(lintPrompt(replicate), known),
+    styleOnly: ensureFormatLine(lintPrompt(parsed.prompt_style_only), known),
   };
 }
 
@@ -360,7 +417,7 @@ async function compare(msg) {
 
 // ── Gemini ───────────────────────────────────────────────────────────────────
 
-async function ask(settings, parts) {
+async function ask(settings, parts, attempt = 0) {
   const url = `${API_BASE}/${encodeURIComponent(settings.model)}:generateContent`;
   let res;
   try {
@@ -401,6 +458,12 @@ async function ask(settings, parts) {
     }
     if (res.status === 404) {
       throw new LensError('MODEL_NOT_FOUND', `Модель «${settings.model}» недоступна для этого ключа — поправь id в настройках.`, { raw: detail });
+    }
+    // Перегрузка на стороне Gemini проходит сама: даём один повтор, прежде
+    // чем показывать ошибку. Квоту (429) так не лечат, её сюда не пускаем.
+    if (res.status >= 500 && attempt < 1) {
+      await sleep(1400);
+      return ask(settings, parts, attempt + 1);
     }
     throw new LensError('HTTP', `Gemini ответил ${res.status}.`, { raw: detail });
   }

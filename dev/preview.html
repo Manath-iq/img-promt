@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <title>Prompt Lens — стенд</title>
-  <script src="stub.js"></script>
+  <script>document.write('<scr' + 'ipt src="stub.js?v=' + Date.now() + '"></scr' + 'ipt>');</script>
   <style>
     body { margin: 0; background: #F3F1EC; color: #1A1A1A; font: 14px/1.6 ui-sans-serif, system-ui, sans-serif; }
     .head { padding: 20px 24px; display: flex; gap: 12px; align-items: baseline; }
@@ -57,6 +57,15 @@
         img.alt = 'демо-референс';
         shelf.appendChild(img);
       }
+
+      // Плитка как на Pinterest: контейнер квадратный, картинка вытянутая,
+      // object-fit: cover. На ней проверяется математика выделения фрагмента.
+      const cover = document.createElement('img');
+      cover.src = swatch(200, 420, 560);
+      cover.alt = 'демо-референс, обрезанный по контейнеру';
+      cover.id = 'cover';
+      cover.style.cssText = 'width:300px;height:300px;object-fit:cover';
+      shelf.appendChild(cover);
       await import('../content.js?v=' + Date.now()); // стенд всегда берёт свежий файл
     }
   </script>

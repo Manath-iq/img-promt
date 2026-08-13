@@ -65,6 +65,14 @@
     background: 'transparent', 'color-scheme': 'dark',
   })) host.style.setProperty(prop, val, 'important');
 
+  // Воркер просит спрятать интерфейс перед снимком вкладки: иначе пилюля
+  // попадает в кадр и уезжает в модель как часть картинки.
+  chrome.runtime.onMessage.addListener((msg, _sender, respond) => {
+    if (msg?.type !== 'LENS_UI') return;
+    host.style.setProperty('visibility', msg.hidden ? 'hidden' : 'visible', 'important');
+    respond({ ok: true });
+  });
+
   const root = host.attachShadow({ mode: 'open' });
   root.innerHTML = `<style>${CSS()}</style>`;
   (document.documentElement || document.body).appendChild(host);
@@ -330,20 +338,57 @@
     dragging = null;
     marquee.hidden = true;
 
-    const rect = hover.el.getBoundingClientRect();
     const x0 = Math.min(start.x, e.clientX), x1 = Math.max(start.x, e.clientX);
     const y0 = Math.min(start.y, e.clientY), y1 = Math.max(start.y, e.clientY);
     if (x1 - x0 < 24 || y1 - y0 < 24) { analyze(describe(hover)); return; }
 
+    // Считаем от нарисованной картинки, а не от элемента: при object-fit: cover
+    // — а так свёрстана вся плитка Pinterest — они не совпадают, и фрагмент
+    // уезжает относительно того, что человек выделил.
+    const box = paintedBox(hover.el);
     const clamp = (v) => Math.min(1, Math.max(0, v));
+    const left = clamp((x0 - box.left) / box.width);
+    const top = clamp((y0 - box.top) / box.height);
     const crop = {
-      x: clamp((x0 - rect.left) / rect.width),
-      y: clamp((y0 - rect.top) / rect.height),
-      w: clamp((x1 - x0) / rect.width),
-      h: clamp((y1 - y0) / rect.height),
+      x: left,
+      y: top,
+      w: clamp((x1 - box.left) / box.width) - left,
+      h: clamp((y1 - box.top) / box.height) - top,
     };
+    if (crop.w < 0.02 || crop.h < 0.02) { analyze(describe(hover)); return; }
     analyze(describe(hover, crop));
   }, true);
+
+  /**
+   * Прямоугольник самой картинки во вьюпорте с учётом object-fit.
+   * У `cover` он больше элемента и обрезается им, у `contain` — меньше.
+   * Для фонов и нестандартного object-position падаем на рамку элемента.
+   */
+  function paintedBox(node) {
+    const rect = node.getBoundingClientRect();
+    if (node.tagName !== 'IMG' || !node.naturalWidth || !node.naturalHeight) return rect;
+
+    const style = getComputedStyle(node);
+    if (style.objectPosition && style.objectPosition !== '50% 50%') return rect;
+
+    const nw = node.naturalWidth, nh = node.naturalHeight;
+    const byWidth = rect.width / nw, byHeight = rect.height / nh;
+    let scale;
+    switch (style.objectFit) {
+      case 'contain': scale = Math.min(byWidth, byHeight); break;
+      case 'cover': scale = Math.max(byWidth, byHeight); break;
+      case 'none': scale = 1; break;
+      case 'scale-down': scale = Math.min(1, Math.min(byWidth, byHeight)); break;
+      default: return rect; // fill — картинка растянута ровно по элементу
+    }
+
+    const width = nw * scale, height = nh * scale;
+    return {
+      left: rect.left + (rect.width - width) / 2,
+      top: rect.top + (rect.height - height) / 2,
+      width, height,
+    };
+  }
 
   function drawMarquee(a, b) {
     const x = Math.min(a.x, b.x), y = Math.min(a.y, b.y);
@@ -358,8 +403,7 @@
     if (state.busy) return;
     state.request = request;
     state.busy = true;
-    state.collapsed = false;
-    card.classList.remove('card--collapsed');
+    expandCard();
     setDot('busy');
     openCard();
     renderLoading(force ? 'Перегенерирую' : 'Разбираю картинку');
@@ -415,6 +459,15 @@
     card.classList.remove('card--in');
     void card.offsetWidth;
     card.classList.add('card--in');
+  }
+
+  /** Разворачивает карточку и возвращает кнопке правильную иконку. */
+  function expandCard() {
+    state.collapsed = false;
+    card.classList.remove('card--collapsed');
+    const btn = card.querySelector('[data-act="collapse"]');
+    btn.innerHTML = I.up;
+    btn.setAttribute('title', 'Свернуть');
   }
 
   function closeCard() {

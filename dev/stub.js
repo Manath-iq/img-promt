@@ -43,6 +43,8 @@
   ].join('\n');
 
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  const listeners = [];
+  window.__lensSend = (msg) => listeners.map((fn) => fn(msg, {}, () => {}));
 
   const thumb = (hue) => {
     const c = document.createElement('canvas');
@@ -86,6 +88,7 @@
   for (const [i, e] of seeded.entries()) mem['thumb:' + e.id] = thumb(20 + i * 40);
 
   async function respond(msg) {
+    window.__lensLastMessage = msg; // стенду удобно смотреть, что реально ушло в воркер
     await wait(msg.type === 'ANALYZE' ? 900 : 500);
     switch (msg.type) {
       case 'SETTINGS': return { ok: true, settings: mem.settings };
@@ -115,10 +118,16 @@
     runtime: {
       id: 'dev-stub',
       lastError: undefined,
-      getManifest: () => ({ version: '1.1.0' }),
+      getManifest: () => ({ version: '1.2.0' }),
       openOptionsPage: () => alert('Настройки (в стенде не открываются)'),
       sendMessage: (msg, cb) => (cb ? respond(msg).then(cb) : respond(msg)),
       getURL: (p) => p,
+      // Воркер шлёт сюда LENS_UI перед снимком вкладки. В стенде это можно
+      // дёрнуть руками: window.__lensSend({ type: 'LENS_UI', hidden: true }).
+      onMessage: {
+        addListener: (fn) => listeners.push(fn),
+        removeListener: (fn) => listeners.splice(listeners.indexOf(fn), 1),
+      },
     },
     storage: {
       local: {

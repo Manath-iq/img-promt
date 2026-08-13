@@ -126,9 +126,11 @@ async function renderUsage() {
   els.usage.textContent = `Сегодня: ${today} запр.` + (week ? `   |   ${week}` : '');
 }
 
+/** Статус проверки ключа идёт отдельной строкой — подсказка со ссылкой остаётся на месте. */
 function note(text, kind = '') {
   els.keyNote.textContent = text;
   els.keyNote.className = 'note ' + kind;
+  els.keyNote.hidden = !text;
 }
 
 let statusTimer = 0;
