@@ -33,7 +33,7 @@
       for (const link of doc.querySelectorAll('link[rel="stylesheet"]')) {
         const l = document.createElement('link');
         l.rel = 'stylesheet';
-        l.href = '../' + link.getAttribute('href');
+        l.href = '../' + link.getAttribute('href') + '?v=' + Date.now(); // стенд не должен ловить кэш
         document.head.appendChild(l);
       }
       document.body.innerHTML = doc.body.innerHTML;

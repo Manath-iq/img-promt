@@ -24,6 +24,7 @@ async function init() {
   els.template.value = settings.template;
 
   renderUsage();
+  $('#version').textContent = 'v' + chrome.runtime.getManifest().version;
   if (settings.apiKey) fetchModels(settings.apiKey).then(fillModels).catch(() => {});
 
   $('#save').addEventListener('click', save);

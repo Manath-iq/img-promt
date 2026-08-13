@@ -115,7 +115,7 @@
     runtime: {
       id: 'dev-stub',
       lastError: undefined,
-      getManifest: () => ({ version: '1.0.0' }),
+      getManifest: () => ({ version: '1.1.0' }),
       openOptionsPage: () => alert('Настройки (в стенде не открываются)'),
       sendMessage: (msg, cb) => (cb ? respond(msg).then(cb) : respond(msg)),
       getURL: (p) => p,

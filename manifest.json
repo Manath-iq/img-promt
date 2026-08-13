@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Prompt Lens",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Наводишь курсор на картинку — получаешь промпт, по которому её можно повторить в Nano Banana или GPT Image 2.",
   "permissions": ["storage", "unlimitedStorage", "clipboardWrite"],
   "host_permissions": ["<all_urls>"],

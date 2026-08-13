@@ -267,7 +267,7 @@ async function runCompare() {
   const r = res.result;
   out.innerHTML = `
     <div class="top">
-      <h1 style="font-size:16px">ДЕЛЬТА</h1>
+      <h1 style="font-size:18px">Дельта</h1>
       <span class="sub">первая → вторая · ${esc(TARGETS[res.target] || res.target)}</span>
       <span class="grow"></span>
       <button class="btn" type="button" data-cmp="close">Закрыть</button>
