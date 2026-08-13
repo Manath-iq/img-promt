@@ -34,8 +34,14 @@
     <div class="card">
       <div style="margin-bottom:14px">
         <label class="k" for="model">Модель</label>
-        <input type="text" id="model" spellcheck="false" placeholder="gemini-3.6-flash">
-        <p class="note" style="margin-top:6px">Любой id, который отдаёт твой ключ. «Проверить» покажет список доступных.</p>
+        <input type="text" id="model" spellcheck="false" placeholder="gemini-3.6-flash" list="models">
+        <datalist id="models"></datalist>
+        <p class="note" style="margin-top:6px">
+          Любой id, который отдаёт твой ключ — список подтягивается сам, когда ключ вставлен.
+          Разбор картинки это единственное место, где уровень модели виден сразу: flash дешевле
+          и быстрее, но хуже читает фактуру — зерно, артефакты, следы коллажа. Если промпты выходят
+          «чище» референса, поставь pro-модель.
+        </p>
       </div>
 
       <div style="margin-bottom:14px">

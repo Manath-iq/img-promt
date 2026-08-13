@@ -28,12 +28,15 @@
 
   const LAYERS = [
     { key: 'medium', label: 'Носитель' },
+    { key: 'era', label: 'Эпоха и происхождение' },
+    { key: 'assembly', label: 'Сборка кадра' },
     { key: 'subject', label: 'Сюжет' },
     { key: 'scene', label: 'Сцена' },
     { key: 'composition', label: 'Композиция' },
     { key: 'light', label: 'Свет' },
     { key: 'camera', label: 'Оптика' },
     { key: 'materials', label: 'Материалы' },
+    { key: 'post', label: 'Обработка и дефекты' },
     { key: 'style', label: 'Стиль' },
     { key: 'mood', label: 'Настроение' },
     { key: 'constraints', label: 'Ограничения' },

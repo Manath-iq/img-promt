@@ -13,7 +13,12 @@ import {
 } from './lib/prompt.js';
 
 const API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
-const MAX_SIDE = 1024;   // длинная сторона картинки, которая уходит в модель
+// Длинная сторона картинки, которая уходит в модель. 1024 и JPEG q0.9 сжирали
+// ровно то, что важнее всего разобрать: зерно, шум, артефакты сжатия, ореолы.
+// WebP q0.95 на 1536 весит примерно столько же, но фактуру сохраняет.
+const MAX_SIDE = 1536;
+const PAYLOAD_TYPE = 'image/webp';
+const PAYLOAD_QUALITY = 0.95;
 const THUMB_SIDE = 256;  // превью для истории
 
 /** Ошибка с кодом — контент-скрипт по коду выбирает, что показать и что предложить. */
@@ -114,7 +119,7 @@ async function analyze(msg, sender) {
 
   const image = await loadImage(msg, sender);
   const [payload, thumb] = await Promise.all([
-    encode(image.bitmap, MAX_SIDE, 'image/jpeg', 0.9, msg.crop),
+    encode(image.bitmap, MAX_SIDE, PAYLOAD_TYPE, PAYLOAD_QUALITY, msg.crop),
     encode(image.bitmap, THUMB_SIDE, 'image/webp', 0.75, msg.crop),
   ]);
   image.bitmap.close();
@@ -126,7 +131,7 @@ async function analyze(msg, sender) {
   const instruction = buildAnalyzerInstruction(settings.template, target, aspect);
   const parts = [
     { text: instruction },
-    { inline_data: { mime_type: 'image/jpeg', data: payload.base64 } },
+    { inline_data: { mime_type: PAYLOAD_TYPE, data: payload.base64 } },
   ];
 
   let analysis;
@@ -137,7 +142,7 @@ async function analyze(msg, sender) {
     try {
       const retryParts = [
         { text: instruction + '\n\nВАЖНО: верни строго JSON по схеме выше. Без markdown, без пояснений, без ```.' },
-        { inline_data: { mime_type: 'image/jpeg', data: payload.base64 } },
+        { inline_data: { mime_type: PAYLOAD_TYPE, data: payload.base64 } },
       ];
       const raw = await ask(settings, retryParts);
       analysis = normalizeAnalysis(parseModelJson(raw));
@@ -365,9 +370,12 @@ async function ask(settings, parts) {
       body: JSON.stringify({
         contents: [{ role: 'user', parts }],
         generationConfig: {
-          temperature: 0.35,
+          // Разбор — работа буквальная: чем ниже температура, тем меньше модель
+          // «дописывает» кадр от себя. Лимит вывода с запасом: полей стало больше,
+          // а обрезанный JSON выглядит как битый ответ модели.
+          temperature: 0.25,
           topP: 0.95,
-          maxOutputTokens: 4096,
+          maxOutputTokens: 8192,
           responseMimeType: 'application/json',
         },
       }),

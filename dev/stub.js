@@ -3,35 +3,43 @@
 // в обычной вкладке, без ключа и без сети.
 
 (() => {
+  // Демо-разбор собран по реальному референсу — тому самому Y2K-коллажу с логотипом IE.
+  // Он специально не «красивый»: на нём видно, ради чего добавлены слои
+  // «эпоха», «сборка» и «обработка».
   const ANALYSIS = {
-    aspect_ratio: '3:4',
-    orientation: 'portrait',
-    medium: 'Цифровая фотография, студийная съёмка, без признаков плёнки.',
-    subject: 'Женщина лет тридцати в льняном костюме песочного цвета, стоит вполоборота, взгляд в камеру, руки в карманах.',
-    scene: 'Пустая студия с бумажным фоном тёплого серого тона, у ног лёгкая тень, глубины пространства почти нет.',
-    composition: 'Поясной кадр, объект смещён вправо от центра, слева треть кадра пустая, горизонт на уровне глаз.',
-    light: 'Один софтбокс слева сверху под 45°, мягкий контур, заполнение отражателем справа, тени плотные, но с деталями.',
-    camera: 'Похоже на 85 мм при f/2.2, лёгкое сжатие планов, боке гладкое, зерна нет, цифровая съёмка.',
-    materials: 'Мятая льняная ткань, матовая кожа, бумажный фон с еле заметной фактурой.',
-    style: 'Студийный editorial-портрет в спокойной бежевой гамме.',
-    mood: 'Собранность и тишина: пустое поле кадра и приглушённый цвет держат паузу.',
-    constraints: 'без логотипов, без посторонних предметов в кадре, без пересветов на коже',
-    palette: ['тёплый песочный #D8C3A5', 'серо-бежевый фон #C9C0B6', 'глубокий графит #2E2B28', 'тёплый телесный #E7C7A9'],
+    aspect_ratio: '1:1',
+    orientation: 'square',
+    medium: 'Цифровой коллаж из стоковых фото и одного CG-элемента, поверх всего единый слой зерна.',
+    era: 'Эстетика старого интернета: Y2K-хром и ностальгикор, элемент из ранних нулевых, собрано вручную в редакторе, а не отрисовано целиком.',
+    assembly: 'Коллаж: цветы и кролик — вырезки с жёсткими краями, свет и масштаб между элементами не сходятся, справа на траве остался тёмный смазанный след ретуши.',
+    subject: 'Хромовый синий шар-логотип с округлой буквой «e», опоясанный толстым золотым кольцом, парит над холмом.',
+    scene: 'Тёмно-синее почти ночное небо с плотным шумом, поперёк кадра крупная перенасыщенная радуга, у горизонта белые облака, внизу зелёный травяной холм.',
+    composition: 'Квадрат, логотип по центру верхней половины, радуга обрамляет его дугой от края до края, горизонт в нижней трети, кролик в правом нижнем углу, цветы — пятном слева.',
+    light: 'Рассеянный ровный свет без единого источника, между элементами не согласован; на хроме жёсткие звёздчатые блики.',
+    camera: 'Не фотография: ранний CG с жёсткими спекулярами на хроме, фотофрагменты сняты обычной цифрой.',
+    materials: 'Полированный хром, матовое золото кольца, короткая сочная трава, мех кролика с размытым контуром.',
+    post: 'Крупное зерно по всему кадру, заметные артефакты сжатия, лёгкая виньетка, звёздчатые блики, мелкий нечитаемый вотермарк в правом нижнем углу.',
+    style: 'Найденная в интернете картинка-настроение, а не рекламный рендер.',
+    mood: 'Ностальгия по раннему вебу: наивная радуга и тёмное небо дают тревожную сладость.',
+    constraints: 'не вычищать зерно и артефакты, не осветлять небо до дневного, не выравнивать края вырезок',
+    palette: ['глубокий синий #16308A', 'травяной зелёный #3FA13B', 'кислотный жёлтый #F2E33C', 'хромовый голубой #7FB2E5'],
     text_in_image: [],
-    tags: ['editorial', 'studio', 'beige', 'soft light', 'minimal'],
-    uncertain: ['материал пуговиц', 'что за обувь — не попала в кадр'],
-    prompt: 'Photorealistic editorial photograph of a woman in her early thirties wearing a sand-coloured linen suit, standing three-quarters to camera in an empty studio, hands in pockets, looking straight into the lens. Warm grey seamless paper fills the background with almost no depth, a soft shadow pooling at her feet. Waist-up framing, subject placed right of centre with a third of the frame left empty, camera at eye level. A single large softbox sits high and left at 45 degrees, wrapping her face in soft contour light while a white bounce opens the shadows on the right. Shot on 85mm at f/2.2, shallow depth of field, clean digital capture with no grain. Muted sand-and-graphite palette, warm highlights, cool shadows, low contrast, matte skin and crisp linen texture. Vertical 3:4 portrait format.',
-    prompt_style_only: '{{SUBJECT}} photographed against warm grey seamless paper in an empty studio, a single large softbox high and left at 45 degrees with a white bounce opening the shadows on the right. Shot on 85mm at f/2.2, shallow depth of field, clean digital capture with no grain. Muted sand-and-graphite palette, warm highlights, cool shadows, low contrast, matte surfaces. Vertical 3:4 portrait format.',
+    tags: ['y2k', 'nostalgiacore', 'collage', 'grain', 'rainbow', 'old web'],
+    uncertain: ['что написано в вотермарке', 'что за тёмный след справа на траве'],
+    prompt: 'Grainy low-fidelity Y2K digital collage in old-web nostalgiacore style, assembled by hand from stock photos and one early-2000s CG element. A chrome blue sphere logo shaped like a rounded letter "e", wrapped in a thick matte gold ring, floats in the upper centre above a green hill. Behind it a deep navy near-night sky heavy with noise, and a huge oversaturated rainbow arcing from edge to edge; small white clouds sit low on the horizon. The grassy hill fills the lower third, a flat cutout patch of acid-yellow flowers on the left, a small grey rabbit mid-leap at lower right with hard cutout edges and slightly mismatched scale. Flat ambient light that does not match between elements, hard star-shaped sparkles on the chrome. Heavy film-style grain over the whole frame, visible compression artifacts, gentle vignette, a small illegible watermark in the lower right corner. Square 1:1 format.',
+    prompt_style_only: 'Grainy low-fidelity Y2K digital collage in old-web nostalgiacore style: {{SUBJECT}} floating in the upper centre above a green hill, against a deep navy near-night sky heavy with noise and a huge oversaturated rainbow arcing edge to edge. Hand-assembled look with hard cutout edges and lighting that does not match between elements, flat ambient light, hard star-shaped sparkles. Heavy film-style grain over the whole frame, visible compression artifacts, gentle vignette, small illegible watermark in the lower right corner. Square 1:1 format.',
   };
 
   /** Промпт под GPT Image 2 — подписанные строки, как их собирает новая инструкция. */
   const GPT_PROMPT = [
-    'Format: vertical 3:4 portrait',
-    'Scene: empty studio, warm grey seamless paper, almost no depth, soft shadow pooling at the feet',
-    'Subject: a woman in her early thirties in a sand-coloured linen suit, three-quarters to camera, hands in pockets, looking into the lens',
-    'Details: waist-up framing, subject right of centre with a third of the frame empty, eye level; single large softbox high and left at 45 degrees, white bounce on the right; shot on 85mm at f/2.2, shallow depth of field; matte skin, crisp linen, muted sand-and-graphite palette, low contrast',
-    'Purpose: editorial fashion portrait',
-    'Constraints: no watermark, no extra text, no props in frame',
+    'Format: square 1:1',
+    'Look: hand-made Y2K digital collage, old-web nostalgiacore, low fidelity, not a clean render',
+    'Scene: deep navy near-night sky heavy with noise, huge oversaturated rainbow arcing edge to edge, small white clouds low on the horizon, green grassy hill across the lower third',
+    'Subject: a chrome blue sphere logo shaped like a rounded letter "e" wrapped in a thick matte gold ring, floating in the upper centre above the hill',
+    'Details: flat cutout patch of acid-yellow flowers at left, a small grey rabbit mid-leap at lower right with hard cutout edges and slightly mismatched scale; flat ambient light that does not match between elements; hard star-shaped sparkles on the chrome; polished chrome and matte gold against short lush grass',
+    'Texture: heavy film-style grain over the whole frame, visible compression artifacts, gentle vignette, hard cutout edges with slight fringing, small illegible watermark lower right',
+    'Purpose: mood board image that looks found on the early internet',
+    'Constraints: keep the low-fidelity look, do not clean it up, do not brighten the sky to daylight',
   ].join('\n');
 
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));

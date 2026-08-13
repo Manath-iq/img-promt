@@ -8,6 +8,7 @@ const $ = (sel) => document.querySelector(sel);
 const els = {
   key: $('#key'), model: $('#model'), target: $('#target'), minSize: $('#minSize'),
   template: $('#template'), status: $('#status'), usage: $('#usage'), keyNote: $('#key-note'),
+  models: $('#models'),
 };
 
 let settings = null;
@@ -23,6 +24,7 @@ async function init() {
   els.template.value = settings.template;
 
   renderUsage();
+  if (settings.apiKey) fetchModels(settings.apiKey).then(fillModels).catch(() => {});
 
   $('#save').addEventListener('click', save);
   $('#history').addEventListener('click', () => chrome.runtime.sendMessage({ type: 'OPEN_HISTORY' }));
@@ -65,6 +67,26 @@ async function save() {
   status('Сохранено');
 }
 
+/** Список моделей, которые реально отдаёт ключ: гадать id незачем. */
+async function fetchModels(key) {
+  const res = await fetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=200', {
+    headers: { 'x-goog-api-key': key },
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data?.error?.message || 'HTTP ' + res.status);
+
+  return (data.models || [])
+    .filter((m) => (m.supportedGenerationMethods || []).includes('generateContent'))
+    .map((m) => String(m.name || '').replace(/^models\//, ''))
+    .filter((id) => id.includes('gemini'))
+    .sort();
+}
+
+function fillModels(ids) {
+  els.models.innerHTML = ids.map((id) => `<option value="${id}"></option>`).join('');
+  return ids;
+}
+
 /** Проверка ключа: заодно показывает, есть ли указанная модель среди доступных. */
 async function check() {
   const key = els.key.value.trim();
@@ -72,33 +94,23 @@ async function check() {
 
   note('Проверяю…');
   try {
-    const res = await fetch('https://generativelanguage.googleapis.com/v1beta/models', {
-      headers: { 'x-goog-api-key': key },
-    });
-    const data = await res.json().catch(() => ({}));
-
-    if (!res.ok) {
-      note(`Ключ не принят: ${data?.error?.message || res.status}`, 'warn');
-      return;
-    }
-
-    const ids = (data.models || [])
-      .map((m) => String(m.name || '').replace(/^models\//, ''))
-      .filter((id) => id.includes('gemini'));
-
+    const ids = fillModels(await fetchModels(key));
     const wanted = els.model.value.trim();
+
     if (ids.includes(wanted)) {
-      note(`Ключ рабочий, модель «${wanted}» доступна.`, 'ok');
+      const tier = /pro/.test(wanted) ? '' : ' Для разбора фактуры pro-модель точнее — список в поле «Модель».';
+      note(`Ключ рабочий, модель «${wanted}» доступна.${tier}`, 'ok');
       return;
     }
 
-    const hints = ids.filter((id) => id.includes('flash')).slice(0, 8);
+    const pro = ids.filter((id) => id.includes('pro')).slice(0, 4);
+    const flash = ids.filter((id) => id.includes('flash')).slice(0, 4);
     note(
-      `Ключ рабочий, но модели «${wanted}» в списке нет. Доступные flash: ${hints.join(', ') || '—'}`,
+      `Ключ рабочий, но модели «${wanted}» в списке нет. Доступные — pro: ${pro.join(', ') || '—'}; flash: ${flash.join(', ') || '—'}`,
       'warn',
     );
   } catch (e) {
-    note('Сеть недоступна: ' + e.message, 'warn');
+    note('Не вышло: ' + e.message, 'warn');
   }
 }
 
