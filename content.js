@@ -27,6 +27,7 @@
   ];
 
   const LAYERS = [
+    { key: 'medium', label: 'Носитель' },
     { key: 'subject', label: 'Сюжет' },
     { key: 'scene', label: 'Сцена' },
     { key: 'composition', label: 'Композиция' },

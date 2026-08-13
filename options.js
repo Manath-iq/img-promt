@@ -50,12 +50,15 @@ async function init() {
 
 async function save() {
   const minImageSize = clamp(parseInt(els.minSize.value, 10) || DEFAULT_SETTINGS.minImageSize, 40, 600);
+  const template = els.template.value.trim() || DEFAULT_TEMPLATE;
   settings = await saveSettings({
     apiKey: els.key.value.trim(),
     model: els.model.value.trim() || DEFAULT_SETTINGS.model,
     target: els.target.value,
     minImageSize,
-    template: els.template.value.trim() || DEFAULT_TEMPLATE,
+    template,
+    // Нетронутая инструкция обновляется вместе с расширением, правленая — нет.
+    templateEdited: template !== DEFAULT_TEMPLATE.trim() && template !== DEFAULT_TEMPLATE,
   });
   els.minSize.value = minImageSize;
   els.model.value = settings.model;

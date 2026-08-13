@@ -8,7 +8,8 @@ import {
 } from './lib/store.js';
 import {
   buildAnalyzerInstruction, buildRebuildInstruction, buildCompareInstruction,
-  parseModelJson, normalizeAnalysis, TARGETS,
+  parseModelJson, normalizeAnalysis, snapAspect, aspectFromAnalysis, ensureFormatLine,
+  TARGETS,
 } from './lib/prompt.js';
 
 const API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
@@ -118,7 +119,11 @@ async function analyze(msg, sender) {
   ]);
   image.bitmap.close();
 
-  const instruction = buildAnalyzerInstruction(settings.template, target);
+  // Пропорции меряем в пикселях и отдаём модели фактом: на глаз она их путает,
+  // а генератор без явного формата выдаёт свой дефолт — кадр не сходится.
+  const aspect = snapAspect(payload.width, payload.height);
+
+  const instruction = buildAnalyzerInstruction(settings.template, target, aspect);
   const parts = [
     { text: instruction },
     { inline_data: { mime_type: 'image/jpeg', data: payload.base64 } },
@@ -145,6 +150,14 @@ async function analyze(msg, sender) {
     }
   }
 
+  // Измеренное сильнее увиденного: перетираем оценку модели и страхуем строку формата.
+  if (aspect) {
+    analysis.aspect_ratio = aspect.label;
+    analysis.orientation = aspect.orientation;
+    analysis.prompt = ensureFormatLine(analysis.prompt, aspect);
+    analysis.prompt_style_only = ensureFormatLine(analysis.prompt_style_only, aspect);
+  }
+
   const entry = {
     id: crypto.randomUUID(),
     createdAt: Date.now(),
@@ -152,6 +165,7 @@ async function analyze(msg, sender) {
     pageUrl: msg.pageUrl || '',
     target,
     crop: msg.crop || null,
+    aspect: aspect ? { label: aspect.label, orientation: aspect.orientation, width: aspect.width, height: aspect.height } : null,
     analysis,
     prompts: {
       [target]: { replicate: analysis.prompt, styleOnly: analysis.prompt_style_only },
@@ -294,8 +308,9 @@ async function rebuildEntry(entry, target, settings) {
   });
 }
 
-async function buildPrompts(analysis, target, settings) {
-  const instruction = buildRebuildInstruction(analysis, target, settings.template);
+async function buildPrompts(analysis, target, settings, aspect = null) {
+  const known = aspect || aspectFromAnalysis(analysis);
+  const instruction = buildRebuildInstruction(analysis, target, settings.template, known);
   let parsed;
   try {
     parsed = parseModelJson(await ask(settings, [{ text: instruction }]));
@@ -309,7 +324,10 @@ async function buildPrompts(analysis, target, settings) {
   }
   const replicate = String(parsed.prompt || '').trim();
   if (!replicate) throw new LensError('BAD_JSON', 'В ответе нет поля prompt.');
-  return { replicate, styleOnly: String(parsed.prompt_style_only || '').trim() };
+  return {
+    replicate: ensureFormatLine(replicate, known),
+    styleOnly: ensureFormatLine(String(parsed.prompt_style_only || '').trim(), known),
+  };
 }
 
 // ── Сравнение двух записей ───────────────────────────────────────────────────
