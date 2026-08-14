@@ -73,6 +73,12 @@
       },
     },
     tags: ANALYSIS.tags,
+    tweak: i === 3
+      ? {
+        edit: 'вместо кролика — рыжий кот, небо оставить тем же',
+        refs: [{ caption: 'кот, которого надо посадить в правый нижний угол', name: 'cat.jpg' }],
+      }
+      : null,
     starred: i % 4 === 0,
     note: i === 1 ? 'Свет вышел жёстче, чем в референсе — попробовать «large softbox, feathered».' : '',
   });
@@ -92,7 +98,21 @@
     await wait(msg.type === 'ANALYZE' ? 900 : 500);
     switch (msg.type) {
       case 'SETTINGS': return { ok: true, settings: mem.settings };
-      case 'ANALYZE': return { ok: true, entry: entry(0), target: msg.target || 'nano-banana', fromCache: false, cacheKey: 'demo' };
+      case 'ANALYZE': {
+        const e = entry(0);
+        // Правки в стенде не применяются, но плашка «с правками» и подписи
+        // референсов должны быть видны: их и проверяют на карточке.
+        e.tweak = msg.edit || msg.refs?.length
+          ? {
+            edit: String(msg.edit || ''),
+            refs: (msg.refs || []).map((r) => ({
+              caption: String(r.caption || '').trim() || 'объект или человек, которого надо добавить в кадр',
+              name: r.name || '',
+            })),
+          }
+          : null;
+        return { ok: true, entry: e, target: msg.target || 'nano-banana', fromCache: false, cacheKey: 'demo' };
+      }
       case 'REBUILD': {
         const e = entry(0);
         const analysis = msg.analysis || e.analysis;
@@ -118,7 +138,7 @@
     runtime: {
       id: 'dev-stub',
       lastError: undefined,
-      getManifest: () => ({ version: '1.2.0' }),
+      getManifest: () => ({ version: '1.3.0' }),
       openOptionsPage: () => alert('Настройки (в стенде не открываются)'),
       sendMessage: (msg, cb) => (cb ? respond(msg).then(cb) : respond(msg)),
       getURL: (p) => p,

@@ -9,7 +9,7 @@ import {
 import {
   buildAnalyzerInstruction, buildRebuildInstruction, buildCompareInstruction,
   parseModelJson, normalizeAnalysis, snapAspect, aspectFromAnalysis, ensureFormatLine,
-  lintPrompt, TARGETS,
+  lintPrompt, TARGETS, MAX_REFS, MAIN_LABEL, DETAIL_LABEL, refLabel, refCaption,
 } from './lib/prompt.js';
 
 const API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
@@ -89,10 +89,27 @@ async function openHistory() {
 
 // ── Разбор картинки ──────────────────────────────────────────────────────────
 
+/** Референсы от контент-скрипта: там они уже ужаты и закодированы. */
+const REF_MIME = /^image\/(webp|png|jpeg)$/;
+
+function cleanRefs(list) {
+  return (Array.isArray(list) ? list : [])
+    .filter((r) => r && typeof r.base64 === 'string' && r.base64.length > 64 && REF_MIME.test(r.mime || ''))
+    .slice(0, MAX_REFS)
+    .map((r) => ({
+      mime: r.mime,
+      base64: r.base64,
+      caption: String(r.caption || '').trim(),
+      name: String(r.name || '').slice(0, 80),
+    }));
+}
+
 /**
- * msg: { urls:[…по убыванию качества], pageUrl, target, crop?, rect?, dpr?, force? }
+ * msg: { urls:[…по убыванию качества], pageUrl, target, crop?, rect?, dpr?, force?,
+ *        edit?, refs?:[{mime, base64, caption, name}] }
  * crop — доля от картинки {x,y,w,h} в 0..1, если выделяли фрагмент.
  * rect — прямоугольник картинки во вьюпорте, запасной путь через скриншот вкладки.
+ * edit — что человек попросил изменить, refs — картинки-референсы к этой просьбе.
  */
 async function analyze(msg, sender) {
   const settings = await getSettings();
@@ -103,12 +120,17 @@ async function analyze(msg, sender) {
   const target = TARGETS[msg.target] ? msg.target : settings.target;
   const sourceUrl = msg.urls?.[0] || '';
   const cropKey = msg.crop ? `#${round4(msg.crop.x)},${round4(msg.crop.y)},${round4(msg.crop.w)},${round4(msg.crop.h)}` : '';
+  const edit = String(msg.edit || '').trim();
+  const refs = cleanRefs(msg.refs);
 
-  // Ключ кэша считается не только по картинке: сменил модель или поправил
-  // инструкцию — прежний разбор больше не ответ на этот вопрос. Иначе после
-  // улучшения шаблона повторный разбор молча отдавал бы старый результат.
+  // Ключ кэша считается не только по картинке: сменил модель, поправил
+  // инструкцию, попросил другую правку или приложил другой референс — прежний
+  // разбор больше не ответ на этот вопрос. Иначе вторая попытка с другой
+  // правкой молча отдавала бы результат первой.
   const key = await hashKey([
-    sourceUrl, cropKey, settings.model, await hashKey(settings.template),
+    sourceUrl, cropKey, settings.model,
+    await hashKey(settings.template),
+    await hashKey(JSON.stringify([edit, refs.map((r) => [r.caption, r.base64])])),
   ].join('|'));
 
   if (!msg.force) {
@@ -143,9 +165,24 @@ async function analyze(msg, sender) {
     ? await encodeNative(image.bitmap, DETAIL_SIDE, PAYLOAD_TYPE, PAYLOAD_QUALITY, msg.crop)
     : null;
 
-  const instruction = buildAnalyzerInstruction(settings.template, target, aspect, !!detail);
-  const images = [{ inline_data: { mime_type: PAYLOAD_TYPE, data: payload.base64 } }];
-  if (detail) images.push({ inline_data: { mime_type: PAYLOAD_TYPE, data: detail.base64 } });
+  const instruction = buildAnalyzerInstruction(settings.template, target, aspect, {
+    detail: !!detail,
+    edit,
+    refs: refs.map((r) => ({ caption: r.caption })),
+  });
+
+  // Подпись идёт отдельной частью прямо перед своей картинкой: так модель точно
+  // знает, где разбираемый кадр, где образец фактуры, а где референс внешности.
+  const images = [{ text: MAIN_LABEL }, { inline_data: { mime_type: PAYLOAD_TYPE, data: payload.base64 } }];
+  if (detail) {
+    images.push({ text: DETAIL_LABEL }, { inline_data: { mime_type: PAYLOAD_TYPE, data: detail.base64 } });
+  }
+  refs.forEach((r, i) => {
+    images.push(
+      { text: refLabel(images.length / 2 + 1, i + 1, r.caption) },
+      { inline_data: { mime_type: r.mime, data: r.base64 } },
+    );
+  });
 
   let analysis;
   try {
@@ -183,6 +220,11 @@ async function analyze(msg, sender) {
     target,
     crop: msg.crop || null,
     aspect: aspect ? { label: aspect.label, orientation: aspect.orientation, width: aspect.width, height: aspect.height } : null,
+    // Сами референсы не храним — это мегабайты base64 на запись. В историю
+    // едет только то, о чём просили: правка и подписи к картинкам.
+    tweak: edit || refs.length
+      ? { edit, refs: refs.map((r) => ({ caption: refCaption(r.caption), name: r.name })) }
+      : null,
     analysis,
     prompts: {
       [target]: { replicate: analysis.prompt, styleOnly: analysis.prompt_style_only },

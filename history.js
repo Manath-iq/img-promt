@@ -71,6 +71,8 @@ function visible() {
       const hay = [
         ...Object.values(e.prompts || {}).flatMap((p) => [p.replicate, p.styleOnly]),
         ...(e.tags || []),
+        e.tweak?.edit,
+        ...(e.tweak?.refs || []).map((r) => r.caption),
         e.note,
         e.analysis?.style,
         e.analysis?.mood,
@@ -125,7 +127,10 @@ function itemNode(entry) {
         <span>${wordCount(prompt)} сл.</span>
         ${entry.analysis?.aspect_ratio ? `<span>·</span><span>${esc(entry.analysis.aspect_ratio)}</span>` : ''}
         ${entry.crop ? '<span>·</span><span>фрагмент</span>' : ''}
+        ${tweakMeta(entry.tweak)}
       </div>
+
+      ${tweakLine(entry.tweak)}
 
       <pre class="item__prompt" data-el="prompt">${esc(prompt)}</pre>
 
@@ -160,6 +165,25 @@ function itemNode(entry) {
   });
 
   return node;
+}
+
+/**
+ * Правки и референсы, с которыми собран этот разбор. Сами картинки-референсы
+ * не хранятся — только подписи: понять, откуда взялся человек в кадре, хватает.
+ */
+function tweakMeta(tweak) {
+  if (!tweak?.edit && !tweak?.refs?.length) return '';
+  const bits = [tweak.edit ? 'с правками' : null, tweak.refs?.length ? `${tweak.refs.length} реф.` : null];
+  return bits.filter(Boolean).map((b) => `<span>·</span><span>${esc(b)}</span>`).join('');
+}
+
+function tweakLine(tweak) {
+  if (!tweak?.edit && !tweak?.refs?.length) return '';
+  const rows = [
+    tweak.edit ? `<li>${esc(tweak.edit)}</li>` : '',
+    ...(tweak.refs || []).map((r, i) => `<li>реф ${i + 1} — ${esc(r.caption)}</li>`),
+  ].join('');
+  return `<ul class="item__tweak">${rows}</ul>`;
 }
 
 async function onAction(act, entry, node, e) {
@@ -309,6 +333,10 @@ function exportMarkdown() {
     md.push(`## ${date(e.createdAt)} · ${domain(e.pageUrl || e.sourceUrl)}`, '');
     if (e.tags?.length) md.push(`**Теги:** ${e.tags.join(', ')}`, '');
     if (e.analysis?.aspect_ratio) md.push(`**Пропорции:** ${e.analysis.aspect_ratio}`, '');
+    if (e.tweak?.edit) md.push(`**Правка:** ${e.tweak.edit}`, '');
+    if (e.tweak?.refs?.length) {
+      md.push(`**Референсы:** ${e.tweak.refs.map((r, i) => `${i + 1} — ${r.caption}`).join('; ')}`, '');
+    }
     md.push(`**Промпт (${TARGETS[target] || target}):**`, '', '```', e.prompts?.[target]?.replicate || e.analysis?.prompt || '', '```', '');
     const styleOnly = e.prompts?.[target]?.styleOnly;
     if (styleOnly) md.push('**Только стиль:**', '', '```', styleOnly, '```', '');

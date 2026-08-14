@@ -18,7 +18,14 @@
     close: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M7 7l10 10M17 7L7 17"/></svg>',
     refresh: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20.5 12a8.5 8.5 0 1 1-2.8-6.3"/><path d="M20.5 4.5v5h-5"/></svg>',
     doc: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3.5H7.5A1.5 1.5 0 0 0 6 5v14a1.5 1.5 0 0 0 1.5 1.5h9A1.5 1.5 0 0 0 18 19V7.5z"/><path d="M14 3.5V7a.5.5 0 0 0 .5.5H18"/><path d="M9 12.5h6M9 16h4"/></svg>',
+    tweak: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8.5h9M17.5 8.5H20M4 15.5h2.5M11 15.5h9"/><circle cx="15" cy="8.5" r="2.5"/><circle cx="8.5" cy="15.5" r="2.5"/></svg>',
+    plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M12 6.5v11M6.5 12h11"/></svg>',
+    send: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h13"/><path d="M12.5 6.5L18.5 12l-6 5.5"/></svg>',
   };
+
+  /** Столько референсов принимает воркер за раз — держим в курсе и интерфейс. */
+  const MAX_REFS = 4;
+  const REF_SIDE = 1024;
 
   const TARGETS = [
     { id: 'nano-banana', label: 'Nano Banana' },
@@ -48,11 +55,12 @@
     mode: 'replicate',        // replicate | styleOnly
     entry: null,
     cacheKey: null,
-    request: null,            // { urls, pageUrl, crop, rect, dpr } — чем сняли текущий разбор
+    request: null,            // { urls, pageUrl, crop, rect, dpr, edit, refs } — чем сняли разбор
     busy: false,
     collapsed: false,
     layersOpen: false,        // держим между перерисовками: правка поля их же и перерисовывает
     hover: null,              // { el, rect, urls }
+    composer: null,           // { base, edit, refs, sel } — открытая менюшка перед разбором
   };
 
   // ── Корень ─────────────────────────────────────────────────────────────────
@@ -81,14 +89,14 @@
 
   const pill = el('button', 'pill', `<span class="dot"></span><span>prompt</span>`);
   pill.type = 'button';
-  pill.title = 'Разобрать картинку в промпт  ·  Alt+P  ·  Alt+рамка — фрагмент';
+  pill.title = 'Разобрать картинку в промпт  ·  Alt+P — сразу, без меню  ·  Alt+рамка — фрагмент';
   pill.hidden = true;
   root.appendChild(pill);
 
   pill.addEventListener('click', (e) => {
     e.preventDefault();
     e.stopPropagation();
-    if (state.hover) analyze(describe(state.hover));
+    if (state.hover) openComposer(describe(state.hover), state.hover.rect);
   });
 
   // Рамка выделения фрагмента.
@@ -99,6 +107,110 @@
   const toast = el('div', 'toast');
   toast.hidden = true;
   root.appendChild(toast);
+
+  // ── Менюшка перед разбором ─────────────────────────────────────────────────
+
+  const sheet = el('section', 'sheet');
+  sheet.hidden = true;
+  sheet.setAttribute('role', 'dialog');
+  sheet.setAttribute('aria-label', 'Разобрать картинку');
+  sheet.innerHTML = `
+    <div class="sheet__head">
+      <span class="dot"></span>
+      <span class="sheet__name">Разобрать картинку</span>
+      <span class="grow"></span>
+      <button class="ico ico--sm" type="button" data-act="sheet-close" title="Отмена (Esc)" aria-label="Отмена">${I.close}</button>
+    </div>
+
+    <span class="sheet__k">Промпт под генератор</span>
+    <div class="seg" role="group" aria-label="Целевой генератор" data-el="sheet-targets"></div>
+
+    <div class="refs" data-el="refs" hidden></div>
+    <label class="cap" data-el="cap" hidden>
+      <span class="cap__k" data-el="cap-k"></span>
+      <input class="cap__v" type="text" spellcheck="false"
+             placeholder="Кто это и куда его в кадр">
+    </label>
+
+    <div class="ask">
+      <button class="ask__plus" type="button" data-act="add-ref"
+              title="Добавить референс — картинку человека или предмета" aria-label="Добавить референс">${I.plus}</button>
+      <textarea class="ask__v" rows="1" spellcheck="false" data-el="edit"
+                placeholder="Что изменить в кадре?"></textarea>
+      <button class="ask__go" type="button" data-act="run" title="Разобрать (Enter)" aria-label="Разобрать">${I.send}</button>
+    </div>
+
+    <p class="sheet__hint" data-el="sheet-hint"></p>`;
+  root.appendChild(sheet);
+
+  const refsBox = sheet.querySelector('[data-el="refs"]');
+  const capBox = sheet.querySelector('[data-el="cap"]');
+  const capKey = sheet.querySelector('[data-el="cap-k"]');
+  const capInput = capBox.querySelector('.cap__v');
+  const editInput = sheet.querySelector('[data-el="edit"]');
+  const sheetHint = sheet.querySelector('[data-el="sheet-hint"]');
+
+  // Выбор файлов. Живёт в Shadow DOM, открывается по клику — жест пользователя есть.
+  const filePick = document.createElement('input');
+  filePick.type = 'file';
+  filePick.accept = 'image/*';
+  filePick.multiple = true;
+  filePick.hidden = true;
+  root.appendChild(filePick);
+  filePick.addEventListener('change', async () => {
+    await addRefs(filePick.files);
+    filePick.value = '';
+  });
+
+  sheet.addEventListener('click', (e) => {
+    const act = e.target.closest?.('[data-act]')?.dataset.act;
+    if (act) onSheetAction(act, e);
+  });
+
+  sheet.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { e.stopPropagation(); closeComposer(); return; }
+    if (e.key !== 'Enter') return;
+    // Enter отправляет, Shift+Enter переносит строку — как в любом поле ввода.
+    // Только из поля правки: на кнопке Enter — это её собственное нажатие.
+    if (e.target === editInput && !e.shiftKey) { e.preventDefault(); runComposer(); }
+    if (e.target === capInput) { e.preventDefault(); capInput.blur(); }
+  });
+
+  editInput.addEventListener('input', () => {
+    if (state.composer) state.composer.edit = editInput.value;
+    sizeEdit();
+  });
+
+  function sizeEdit() {
+    editInput.style.height = 'auto';
+    editInput.style.height = Math.min(120, editInput.scrollHeight) + 'px';
+  }
+
+  // Скриншот человека проще вставить из буфера, чем сохранять в файл.
+  editInput.addEventListener('paste', (e) => {
+    const files = [...(e.clipboardData?.items || [])]
+      .filter((it) => it.kind === 'file' && it.type.startsWith('image/'))
+      .map((it) => it.getAsFile())
+      .filter(Boolean);
+    if (!files.length) return;
+    e.preventDefault();
+    addRefs(files);
+  });
+
+  capInput.addEventListener('input', () => {
+    const c = state.composer;
+    if (c && c.refs[c.sel]) c.refs[c.sel].caption = capInput.value;
+  });
+
+  for (const type of ['dragover', 'drop']) {
+    sheet.addEventListener(type, (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      sheet.classList.toggle('sheet--drop', type === 'dragover');
+      if (type === 'drop') addRefs(e.dataTransfer?.files);
+    });
+  }
+  sheet.addEventListener('dragleave', () => sheet.classList.remove('sheet--drop'));
 
   // ── Карточка ───────────────────────────────────────────────────────────────
 
@@ -152,6 +264,9 @@
   window.addEventListener('resize', () => { if (state.hover) updateHover(); });
 
   function updateHover() {
+    // Пока меню открыто, цель заморожена: пилюля не должна уезжать на соседнюю
+    // картинку под курсором, пока человек печатает правку к этой.
+    if (state.composer) return;
     const found = findImage(pointer.x, pointer.y);
     if (!found) {
       // Пилюля держится, пока курсор на ней самой.
@@ -299,7 +414,9 @@
   // ── Хоткей и выделение фрагмента ───────────────────────────────────────────
 
   window.addEventListener('keydown', (e) => {
+    // Alt+P — быстрый путь: разбор без меню, с последним выбранным генератором.
     if (e.altKey && (e.code === 'KeyP' || e.key === 'p' || e.key === 'P')) {
+      if (state.composer) return;
       const found = state.hover || findImage(pointer.x, pointer.y);
       if (found) {
         e.preventDefault();
@@ -308,13 +425,14 @@
       }
       return;
     }
+    if (e.key === 'Escape' && state.composer) { closeComposer(); return; }
     if (e.key === 'Escape' && !card.hidden) closeCard();
   }, true);
 
   let dragging = null;
 
   document.addEventListener('mousedown', (e) => {
-    if (!e.altKey || e.button !== 0) return;
+    if (!e.altKey || e.button !== 0 || state.composer) return;
     const found = findImage(e.clientX, e.clientY);
     if (!found) return;
     e.preventDefault();
@@ -340,7 +458,8 @@
 
     const x0 = Math.min(start.x, e.clientX), x1 = Math.max(start.x, e.clientX);
     const y0 = Math.min(start.y, e.clientY), y1 = Math.max(start.y, e.clientY);
-    if (x1 - x0 < 24 || y1 - y0 < 24) { analyze(describe(hover)); return; }
+    const at = { x: x0, y: y0, width: x1 - x0, height: y1 - y0 };
+    if (x1 - x0 < 24 || y1 - y0 < 24) { openComposer(describe(hover), hover.rect); return; }
 
     // Считаем от нарисованной картинки, а не от элемента: при object-fit: cover
     // — а так свёрстана вся плитка Pinterest — они не совпадают, и фрагмент
@@ -355,8 +474,8 @@
       w: clamp((x1 - box.left) / box.width) - left,
       h: clamp((y1 - box.top) / box.height) - top,
     };
-    if (crop.w < 0.02 || crop.h < 0.02) { analyze(describe(hover)); return; }
-    analyze(describe(hover, crop));
+    if (crop.w < 0.02 || crop.h < 0.02) { openComposer(describe(hover), hover.rect); return; }
+    openComposer(describe(hover, crop), at);
   }, true);
 
   /**
@@ -397,16 +516,182 @@
     marquee.style.height = Math.abs(b.y - a.y) + 'px';
   }
 
+  // ── Менюшка: логика ────────────────────────────────────────────────────────
+
+  /**
+   * Открывает меню перед разбором. Разбор без правок — тоже путь через меню:
+   * Enter отправляет пустое поле, и запрос уходит ровно такой же, как раньше.
+   * base — то, что вернул describe(): чем сняли картинку.
+   */
+  function openComposer(base, rect = null, seed = null) {
+    state.composer = {
+      base,
+      edit: seed?.edit || '',
+      refs: seed?.refs ? seed.refs.map((r) => ({ ...r })) : [],
+      sel: null,
+    };
+    pill.hidden = true;
+    sheet.hidden = false;
+    editInput.value = state.composer.edit;
+    renderSheet();
+    sizeEdit();               // высоту поля меряем на видимом боксе, не на скрытом
+    placeSheet(rect || base.rect);
+    sheet.classList.remove('sheet--in');
+    void sheet.offsetWidth;
+    sheet.classList.add('sheet--in');
+    editInput.focus();
+  }
+
+  function closeComposer() {
+    state.composer = null;
+    sheet.hidden = true;
+    sheet.classList.remove('sheet--drop');
+  }
+
+  /** Перерисовываются только части, зависящие от состояния: поле ввода не трогаем. */
+  function renderSheet() {
+    const c = state.composer;
+    if (!c) return;
+
+    sheet.querySelector('[data-el="sheet-targets"]').innerHTML = TARGETS.map((t) => `
+      <button class="seg__btn${t.id === state.target ? ' is-on' : ''}" type="button"
+              data-act="sheet-target" data-target="${t.id}"
+              aria-pressed="${t.id === state.target}">${t.label}</button>`).join('');
+
+    refsBox.hidden = !c.refs.length;
+    refsBox.innerHTML = c.refs.map((r, i) => `
+      <div class="ref${i === c.sel ? ' is-on' : ''}" data-act="pick-ref" data-i="${i}"
+           title="${esc(r.caption || 'Нажми, чтобы подписать')}" style="background-image:url('${r.dataUrl}')">
+        <span class="ref__n">${i + 1}</span>
+        <button class="ref__x" type="button" data-act="drop-ref" data-i="${i}"
+                title="Убрать референс" aria-label="Убрать референс ${i + 1}">${I.close}</button>
+        ${r.caption.trim() ? '<span class="ref__ok"></span>' : ''}
+      </div>`).join('');
+
+    capBox.hidden = c.sel == null;
+    if (c.sel != null) {
+      capKey.textContent = `Референс ${c.sel + 1} — что это и что с ним делать`;
+      capInput.value = c.refs[c.sel]?.caption || '';
+    }
+
+    sheetHint.textContent = c.refs.length
+      ? 'Референс видит только модель: в промпт он уйдёт словами. Подпиши, что это и что с ним делать.'
+      : 'Например: «вместо яблока банан» или «вечерний свет». Пусто — обычный разбор. '
+        + 'Плюс или Ctrl+V — приложить картинку человека или предмета. Enter — разобрать.';
+  }
+
+  /** Меню висит у картинки, но не вылезает за вьюпорт. */
+  function placeSheet(rect) {
+    const w = Math.min(360, window.innerWidth - 24);
+    sheet.style.width = w + 'px';
+    const x = Math.max(12, Math.min((rect?.x ?? rect?.left ?? 40) + 8, window.innerWidth - w - 12));
+    const top = (rect?.y ?? rect?.top ?? 40) + 44;
+    const y = Math.max(12, Math.min(top, window.innerHeight - sheet.offsetHeight - 12));
+    sheet.style.left = Math.round(x) + 'px';
+    sheet.style.top = Math.round(y) + 'px';
+  }
+
+  function onSheetAction(act, e) {
+    const node = e.target.closest('[data-act]');
+    switch (act) {
+      case 'sheet-close': closeComposer(); break;
+      case 'run': runComposer(); break;
+      case 'add-ref': filePick.click(); break;
+
+      case 'sheet-target':
+        state.target = node.dataset.target;
+        renderSheet();
+        break;
+
+      case 'pick-ref': {
+        const i = Number(node.dataset.i);
+        state.composer.sel = state.composer.sel === i ? null : i;
+        renderSheet();
+        if (state.composer.sel != null) capInput.focus();
+        break;
+      }
+
+      case 'drop-ref': {
+        e.stopPropagation();
+        const c = state.composer;
+        c.refs.splice(Number(node.dataset.i), 1);
+        c.sel = null;
+        renderSheet();
+        break;
+      }
+    }
+  }
+
+  function runComposer() {
+    const c = state.composer;
+    if (!c) return;
+    const request = {
+      ...c.base,
+      target: state.target,
+      edit: editInput.value.trim(),
+      // dataUrl нужен только превью в меню — в воркер он не едет.
+      refs: c.refs.map((r) => ({ mime: r.mime, base64: r.base64, caption: r.caption.trim(), name: r.name })),
+    };
+    closeComposer();
+    analyze(request);
+  }
+
+  async function addRefs(files) {
+    const c = state.composer;
+    const list = [...(files || [])].filter((f) => f.type.startsWith('image/'));
+    if (!c || !list.length) return;
+
+    const room = MAX_REFS - c.refs.length;
+    if (room <= 0) { flash(`Больше ${MAX_REFS} референсов модель начинает путать`); return; }
+    if (list.length > room) flash(`Взял ${room} — это предел за один разбор`);
+
+    for (const file of list.slice(0, room)) {
+      try {
+        c.refs.push(await packRef(file));
+      } catch {
+        flash('Эту картинку не удалось прочитать');
+      }
+    }
+    c.sel = c.refs.length - 1; // сразу зовём подписать: без подписи модель гадает
+    renderSheet();
+    placeSheet(c.base.rect);
+    capInput.focus();
+  }
+
+  /**
+   * Ужимаем референс прямо здесь: полноразмерное фото с телефона — это мегабайты
+   * base64 через sendMessage, а внешность на 1024 px читается целиком.
+   */
+  async function packRef(file) {
+    const bitmap = await createImageBitmap(file);
+    const scale = Math.min(1, REF_SIDE / Math.max(bitmap.width, bitmap.height));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+    canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+    canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    bitmap.close();
+
+    const dataUrl = canvas.toDataURL('image/webp', 0.9);
+    return {
+      mime: 'image/webp',
+      base64: dataUrl.slice(dataUrl.indexOf(',') + 1),
+      dataUrl,
+      caption: '',
+      name: String(file.name || 'вставка').slice(0, 80),
+    };
+  }
+
   // ── Запросы ────────────────────────────────────────────────────────────────
 
   async function analyze(request, force = false) {
     if (state.busy) return;
     state.request = request;
     state.busy = true;
+    if (request.target) state.target = request.target;
     expandCard();
     setDot('busy');
     openCard();
-    renderLoading(force ? 'Перегенерирую' : 'Разбираю картинку');
+    renderLoading(force ? 'Перегенерирую' : request.edit || request.refs?.length ? 'Разбираю с правками' : 'Разбираю картинку');
 
     const res = await send({ type: 'ANALYZE', ...request, target: state.target, force });
     state.busy = false;
@@ -524,6 +809,7 @@
         <span class="words">${words(text)} сл.</span>
         ${fromCache ? `<span class="badge" title="Результат взят из кэша">из кэша</span>` : ''}
         <span class="grow"></span>
+        ${tweakButton(entry.tweak)}
         <button class="ico" type="button" data-act="regen" title="Перегенерировать">${I.refresh}</button>
         <button class="ico" type="button" data-act="history" title="История">${I.doc}</button>
       </div>
@@ -598,6 +884,20 @@
     }
   }
 
+  /**
+   * Одна кнопка на всё: открывает меню правок и она же показывает, что разбор
+   * собран не по чистой картинке. Отдельной плашке в шапке места нет — там уже
+   * заголовок, счётчик слов и «из кэша».
+   */
+  function tweakButton(tweak) {
+    const on = !!(tweak?.edit || tweak?.refs?.length);
+    const what = on
+      ? [tweak.edit, ...(tweak.refs || []).map((r, i) => `реф ${i + 1}: ${r.caption}`)].filter(Boolean).join('\n')
+      : '';
+    return `<button class="ico${on ? ' ico--on' : ''}" type="button" data-act="tweak"
+              title="${on ? 'Разобрано с правками:\n' + esc(what) : 'Правки и референсы'}">${I.tweak}</button>`;
+  }
+
   function paletteChip(entry, i) {
     const hex = matchHex(entry);
     const label = entry.replace(/#(?:[0-9a-f]{3}|[0-9a-f]{6})\b/i, '').replace(/[(),]\s*$/, '').trim();
@@ -645,6 +945,18 @@
       case 'regen':
         if (state.request) analyze(state.request, true);
         break;
+
+      // Меню с теми же правками, что ушли в прошлый раз: чаще всего правку
+      // хочется не отменить, а дописать, посмотрев на результат.
+      case 'tweak': {
+        if (!state.request) break;
+        const { edit, refs } = state.request;
+        openComposer(state.request, null, {
+          edit,
+          refs: (refs || []).map((r) => ({ ...r, dataUrl: `data:${r.mime};base64,${r.base64}` })),
+        });
+        break;
+      }
 
       case 'target': {
         const next = node.dataset.target;
@@ -743,7 +1055,7 @@
    Без этой строки пилюля и карточка видны с самого начала. */
 [hidden] { display: none !important; }
 
-.pill, .card, .toast, .marquee {
+.pill, .card, .toast, .marquee, .sheet {
   /* Тёмное стекло: цвет подложки просвечивает сквозь размытие, поэтому корпус
      не сплошной, а полупрозрачный. Все значения — из системной палитры Apple. */
   --glass: rgba(24, 24, 27, .72);
@@ -809,6 +1121,111 @@ button { font: inherit; color: inherit; cursor: pointer; border: 0; background: 
   pointer-events: none;
 }
 
+/* ── Менюшка перед разбором ─────────────────────────────────────────────── */
+
+.sheet {
+  position: fixed; top: 0; left: 0;
+  padding: 14px 16px 14px;
+  border-radius: 24px;
+  background: var(--glass);
+  backdrop-filter: blur(44px) saturate(180%);
+  -webkit-backdrop-filter: blur(44px) saturate(180%);
+  box-shadow:
+    inset 0 .5px 0 rgba(255, 255, 255, .18),
+    inset 0 0 0 .5px rgba(255, 255, 255, .07),
+    0 1px 3px rgba(0, 0, 0, .3),
+    0 22px 60px rgba(0, 0, 0, .52);
+}
+.sheet--in { animation: open .22s cubic-bezier(.32, .72, 0, 1); }
+.sheet--drop { box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, .5), 0 22px 60px rgba(0, 0, 0, .52); }
+
+.sheet__head { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; }
+.sheet__name {
+  font-size: 11.5px; font-weight: 590; letter-spacing: .04em;
+  text-transform: uppercase; color: var(--muted);
+}
+.sheet__k, .cap__k {
+  display: block; margin: 0 0 6px 4px;
+  font-size: 12px; font-weight: 500; color: var(--faint);
+}
+.sheet .seg { margin-top: 0; }
+.sheet__hint { margin: 10px 2px 0; font-size: 12px; line-height: 1.4; color: var(--faint); }
+
+.ico--sm { width: 26px; height: 26px; }
+.ico--sm svg { width: 14px; height: 14px; }
+
+/* Референсы. Подпись есть — в углу зелёная точка, нет — модель будет гадать. */
+.refs { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.ref {
+  position: relative;
+  width: 58px; height: 58px; flex: none;
+  border-radius: 16px;
+  background-size: cover; background-position: center;
+  box-shadow: inset 0 0 0 .5px rgba(255, 255, 255, .18);
+  cursor: pointer;
+  transition: box-shadow .15s ease, transform .15s ease;
+}
+.ref:hover { transform: translateY(-1px); }
+.ref.is-on { box-shadow: 0 0 0 2px var(--solid); }
+.ref__n {
+  position: absolute; left: 5px; bottom: 5px;
+  padding: 1px 6px; border-radius: 999px;
+  background: rgba(16, 16, 18, .72);
+  font-size: 10px; font-weight: 600; color: var(--text);
+}
+.ref__x {
+  position: absolute; top: -5px; right: -5px;
+  display: flex; align-items: center; justify-content: center;
+  width: 19px; height: 19px; border-radius: 50%;
+  background: rgba(16, 16, 18, .92);
+  box-shadow: inset 0 0 0 .5px rgba(255, 255, 255, .22);
+  color: var(--muted);
+}
+.ref__x:hover { color: var(--text); }
+.ref__x svg { width: 11px; height: 11px; }
+.ref__ok {
+  position: absolute; right: 5px; bottom: 6px;
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--accent); box-shadow: 0 0 5px rgba(48, 209, 88, .6);
+}
+
+.cap { display: block; margin-top: 12px; }
+.cap__v, .ask__v {
+  display: block; width: 100%;
+  border: 0; background: none; resize: none;
+  font-family: inherit; font-size: 14px; line-height: 1.4; color: var(--text);
+}
+.cap__v {
+  padding: 10px 13px; border-radius: 16px;
+  background: var(--glass-fill-2);
+  box-shadow: inset 0 .5px 0 var(--hairline);
+}
+.cap__v:focus { outline: none; background: var(--glass-fill); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .28); }
+
+/* Строка ввода: плюс — референс, поле — правка, стрелка — разобрать. */
+.ask {
+  display: flex; align-items: flex-end; gap: 6px;
+  margin-top: 12px; padding: 5px 5px 5px 6px;
+  border-radius: 22px;
+  background: var(--glass-fill-2);
+  box-shadow: inset 0 .5px 0 var(--hairline);
+}
+.ask:focus-within { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .28); }
+.ask__v { padding: 9px 2px; max-height: 120px; overflow-y: auto; }
+.ask__v:focus { outline: none; }
+.ask__v::placeholder { color: var(--faint); }
+.ask__plus, .ask__go {
+  display: flex; align-items: center; justify-content: center;
+  width: 34px; height: 34px; flex: none; border-radius: 50%;
+  transition: background .15s ease, color .15s ease;
+}
+.ask__plus { background: var(--glass-fill); color: var(--muted); }
+.ask__plus:hover { background: rgba(120, 120, 128, .32); color: var(--text); }
+.ask__go { background: var(--solid); color: var(--on-solid); }
+.ask__go:hover { background: #FFFFFF; }
+.ask__plus:active, .ask__go:active { transform: scale(.94); }
+.ask__plus svg, .ask__go svg { width: 17px; height: 17px; }
+
 /* ── Карточка ───────────────────────────────────────────────────────────── */
 
 .card {
@@ -853,6 +1270,8 @@ button { font: inherit; color: inherit; cursor: pointer; border: 0; background: 
 }
 .ico:hover { background: var(--glass-fill); color: var(--text); }
 .ico:active { transform: scale(.94); }
+/* Правки применены — это состояние, поэтому оно светится, а не подписывается. */
+.ico--on { background: rgba(255, 255, 255, .16); color: var(--text); }
 .ico svg { width: 16px; height: 16px; }
 
 .body { padding: 0 18px 18px; overflow-y: auto; overscroll-behavior: contain; }
@@ -881,6 +1300,7 @@ button { font: inherit; color: inherit; cursor: pointer; border: 0; background: 
   border-radius: 999px; background: var(--glass-fill-2);
   font-size: 11.5px; font-weight: 500; color: var(--faint);
 }
+.badge { white-space: nowrap; }
 
 .prompt {
   margin: 0; padding: 0;
@@ -1020,8 +1440,8 @@ button { font: inherit; color: inherit; cursor: pointer; border: 0; background: 
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .pill--in, .card--in, .dot--busy, .toast { animation: none; }
-  .ico, .btn, .sw, .seg__btn, .layers > summary::after { transition: none; }
+  .pill--in, .card--in, .sheet--in, .dot--busy, .toast { animation: none; }
+  .ico, .btn, .sw, .seg__btn, .ref, .ask__plus, .ask__go, .layers > summary::after { transition: none; }
 }`;
   }
 })();
