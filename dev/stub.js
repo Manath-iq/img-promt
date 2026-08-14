@@ -25,6 +25,14 @@
     palette: ['глубокий синий #16308A', 'травяной зелёный #3FA13B', 'кислотный жёлтый #F2E33C', 'хромовый голубой #7FB2E5'],
     text_in_image: [],
     tags: ['y2k', 'nostalgiacore', 'collage', 'grain', 'rainbow', 'old web'],
+    // Рекомендации: то, чего промпт словами не передаёт. Все виды сразу —
+    // на стенде видно, как они верстаются в один ряд и как переносятся.
+    hints: [
+      { kind: 'person', text: 'приложи своё фото в генератор', why: 'Лицо конкретного человека словами не повторяется: по описанию выйдет похожий типаж, а не ты.' },
+      { kind: 'logo', text: 'вклей логотип файлом', why: 'Генераторы перевирают знаки и буквы — округлую «e» в кольце они соберут заново и мимо.' },
+      { kind: 'text', text: 'вотермарк набери поверх', why: 'Мелкая надпись в правом нижнем углу выйдет нечитаемой кашей.' },
+      { kind: 'setting', text: 'поставь квадрат 1:1', why: 'По умолчанию генератор выдаст свой формат, и кадр не сойдётся.' },
+    ],
     uncertain: ['что написано в вотермарке', 'что за тёмный след справа на траве'],
     prompt: 'Grainy low-fidelity Y2K digital collage in old-web nostalgiacore style, assembled by hand from stock photos and one early-2000s CG element. A chrome blue sphere logo shaped like a rounded letter "e", wrapped in a thick matte gold ring, floats in the upper centre above a green hill. Behind it a deep navy near-night sky heavy with noise, and a huge oversaturated rainbow arcing from edge to edge; small white clouds sit low on the horizon. The grassy hill fills the lower third, a flat cutout patch of acid-yellow flowers on the left, a small grey rabbit mid-leap at lower right with hard cutout edges and slightly mismatched scale. Flat ambient light that does not match between elements, hard star-shaped sparkles on the chrome. Heavy film-style grain over the whole frame, visible compression artifacts, gentle vignette, a small illegible watermark in the lower right corner. Square 1:1 format.',
     prompt_style_only: 'Grainy low-fidelity Y2K digital collage in old-web nostalgiacore style: {{SUBJECT}} floating in the upper centre above a green hill, against a deep navy near-night sky heavy with noise and a huge oversaturated rainbow arcing edge to edge. Hand-assembled look with hard cutout edges and lighting that does not match between elements, flat ambient light, hard star-shaped sparkles. Heavy film-style grain over the whole frame, visible compression artifacts, gentle vignette, small illegible watermark in the lower right corner. Square 1:1 format.',
@@ -138,7 +146,7 @@
     runtime: {
       id: 'dev-stub',
       lastError: undefined,
-      getManifest: () => ({ version: '1.3.0' }),
+      getManifest: () => ({ version: '1.4.0' }),
       openOptionsPage: () => alert('Настройки (в стенде не открываются)'),
       sendMessage: (msg, cb) => (cb ? respond(msg).then(cb) : respond(msg)),
       getURL: (p) => p,

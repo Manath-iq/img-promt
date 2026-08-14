@@ -2,7 +2,7 @@
 // сравнение двух записей и экспорт.
 
 import { getHistory, getThumb, updateEntry, removeEntry, clearHistory } from './lib/store.js';
-import { TARGETS, wordCount } from './lib/prompt.js';
+import { TARGETS, HINT_KINDS, wordCount } from './lib/prompt.js';
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -73,6 +73,7 @@ function visible() {
         ...(e.tags || []),
         e.tweak?.edit,
         ...(e.tweak?.refs || []).map((r) => r.caption),
+        ...(e.analysis?.hints || []).map((h) => h.text),
         e.note,
         e.analysis?.style,
         e.analysis?.mood,
@@ -134,6 +135,8 @@ function itemNode(entry) {
 
       <pre class="item__prompt" data-el="prompt">${esc(prompt)}</pre>
 
+      ${tipsRow(entry.analysis?.hints)}
+
       ${entry.tags?.length ? `<div class="item__tags">${entry.tags.map((t) => `<span class="tag">${esc(t)}</span>`).join('')}</div>` : ''}
 
       <textarea class="item__note" rows="1" placeholder="Заметка: что получилось при генерации, что подкрутить"
@@ -165,6 +168,13 @@ function itemNode(entry) {
   });
 
   return node;
+}
+
+/** Рекомендации — чего промпт не передаёт словами. Причина в подсказке. */
+function tipsRow(hints) {
+  if (!hints?.length) return '';
+  return `<div class="item__tips">${hints.map((h) => `
+    <span class="tip tip--do" title="${esc(h.why || h.text)}">${esc(HINT_KINDS[h.kind] || '')} · ${esc(h.text)}</span>`).join('')}</div>`;
 }
 
 /**
@@ -340,6 +350,11 @@ function exportMarkdown() {
     md.push(`**Промпт (${TARGETS[target] || target}):**`, '', '```', e.prompts?.[target]?.replicate || e.analysis?.prompt || '', '```', '');
     const styleOnly = e.prompts?.[target]?.styleOnly;
     if (styleOnly) md.push('**Только стиль:**', '', '```', styleOnly, '```', '');
+    if (e.analysis?.hints?.length) {
+      md.push('**Доложить самому:**', '');
+      for (const h of e.analysis.hints) md.push(`- ${h.text}${h.why ? ` — ${h.why}` : ''}`);
+      md.push('');
+    }
     if (e.note) md.push(`**Заметка:** ${e.note}`, '');
     if (e.pageUrl) md.push(`Источник: ${e.pageUrl}`, '');
     md.push('---', '');

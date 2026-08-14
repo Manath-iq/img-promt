@@ -27,6 +27,19 @@
   const MAX_REFS = 4;
   const REF_SIDE = 1024;
 
+  /**
+   * Значки рекомендаций. Вид рекомендации виден значком, а не цветом: акцент
+   * в расширении один, и разноцветные плашки превратили бы его в украшение.
+   */
+  const HINTS = {
+    person: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8.5" r="3.5"/><path d="M5.5 19.5a6.5 6.5 0 0 1 13 0"/></svg>',
+    object: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5l7.5 4.2v8.6L12 20.5 4.5 16.3V7.7z"/><path d="M4.7 7.8L12 12l7.3-4.2M12 12v8.4"/></svg>',
+    logo: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.2l2.5 1.9 3.1-.2.5 3 2.4 2-1.4 2.8 1.4 2.8-2.4 2-.5 3-3.1-.2L12 21.2l-2.5-1.9-3.1.2-.5-3-2.4-2L4.9 12 3.5 9.2l2.4-2 .5-3 3.1.2z"/></svg>',
+    text: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M5 6.5V5h14v1.5M12 5v14M9 19h6"/></svg>',
+    setting: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M5 8h6M15 8h4M5 16h4M13 16h6"/><circle cx="13" cy="8" r="2"/><circle cx="11" cy="16" r="2"/></svg>',
+    note: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 11v5.5M12 7.8v.6"/></svg>',
+  };
+
   const TARGETS = [
     { id: 'nano-banana', label: 'Nano Banana' },
     { id: 'gpt-image-2', label: 'GPT Image 2' },
@@ -816,6 +829,8 @@
 
       <pre class="prompt${pending ? ' prompt--pending' : ''}" tabindex="0" data-el="prompt">${esc(text)}</pre>
 
+      ${tipsRow(a.hints)}
+
       ${a.tags?.length ? `<div class="tags">${a.tags.map((t) => `<span class="tag">${esc(t)}</span>`).join('')}</div>` : ''}
 
       <div class="seg" role="group" aria-label="Целевой генератор">
@@ -882,6 +897,19 @@
         rebuild({ analysis });
       });
     }
+  }
+
+  /**
+   * Рекомендации — то, чего промпт словами не передаёт: конкретное лицо, точный
+   * логотип, свой предмет. Стоят выше тегов эстетики: по ним надо что-то сделать,
+   * а теги просто описывают. Причина висит в подсказке, чтобы плашка не разбухала.
+   */
+  function tipsRow(hints) {
+    if (!hints?.length) return '';
+    return `<div class="tips">${hints.map((h) => `
+      <span class="tip" title="${esc(h.why || h.text)}">
+        <span class="tip__i">${HINTS[h.kind] || HINTS.note}</span>${esc(h.text)}
+      </span>`).join('')}</div>`;
   }
 
   /**
@@ -1311,6 +1339,20 @@ button { font: inherit; color: inherit; cursor: pointer; border: 0; background: 
   user-select: text;
 }
 .prompt--pending { opacity: .38; }
+
+/* Рекомендации. Единственное место, где акцент работает не на состоянии:
+   по ним надо что-то сделать руками, и они не должны теряться среди тегов. */
+.tips { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 16px; }
+.tip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 12px 6px 9px; border-radius: 999px;
+  background: rgba(48, 209, 88, .13);
+  box-shadow: inset 0 0 0 .5px rgba(48, 209, 88, .32);
+  font-size: 12.5px; letter-spacing: -.005em; color: #8FE7A9;
+  cursor: help;
+}
+.tip__i { display: inline-flex; flex: none; opacity: .85; }
+.tip__i svg { width: 13px; height: 13px; }
 
 .tags { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 16px; }
 .tag {

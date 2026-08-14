@@ -83,6 +83,14 @@
   white-space: pre-wrap; word-break: break-word;
 }
 
+.item__tips { display: flex; flex-wrap: wrap; gap: 6px; }
+.tip--do {
+  padding: 5px 11px; border-radius: 999px;
+  background: rgba(48, 209, 88, .13);
+  box-shadow: inset 0 0 0 .5px rgba(48, 209, 88, .32);
+  font-size: 12.5px; color: #8FE7A9; cursor: help;
+}
+
 .item__tags { display: flex; flex-wrap: wrap; gap: 6px; }
 .tag {
   padding: 5px 11px; border-radius: 999px;
